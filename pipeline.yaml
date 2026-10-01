@@ -1,0 +1,158 @@
+# PayBridge pipeline definition — v1 (blueprint v2.1, Section 4)
+# Configuration over code: stages, topics, balance rules, tolerances, SLAs,
+# dependencies and owners live here as data. The simulator reads it in M1;
+# the context graph is built from it in M2.
+#
+# Rule expressions are a tiny DSL evaluated by the rules gate with a safe
+# evaluator (never Python eval()). Counter names on the right-hand side must
+# match the stage's `outcomes`. `in` is always the count read from `reads`.
+
+version: 1
+contract: contracts/payment.v1.schema.json
+
+defaults:
+  settling_window_seconds: 300      # balance checks run only after this closes
+  money_tolerance_minor: 0          # money is exact unless a stage says otherwise
+
+currencies:                         # ISO 4217 minor-unit exponents
+  INR: 2
+  GBP: 2
+  USD: 2
+  EUR: 2
+  JPY: 0
+  KWD: 3
+
+dependencies:
+  - name: fx_rate_provider
+    kind: external_api
+  - name: sanctions_list
+    kind: reference_data
+  - name: rail_gateway
+    kind: external_network
+
+owners:
+  - name: payments-ops
+  - name: compliance-ops
+  - name: treasury-ops
+  - name: ledger-ops
+
+stages:
+
+  - name: initiate
+    writes: payments.initiated
+    owner: payments-ops
+    outcomes: [emitted]
+    notes: >
+      Mints uetr (business identity) and derives idempotency_key.
+      Only stage that creates identity.
+
+  - name: validate
+    reads: payments.initiated
+    writes: payments.validated
+    owner: payments-ops
+    outcomes: [passed, rejected, dlq]
+    balance:
+      counts: "in == passed + rejected + dlq"
+      arrivals: "in == upstream.initiate.emitted"      # upstream silence
+    tolerance:
+      rejection_rate_band: [0.01, 0.04]                # baseline ~2%
+      arrivals_after_window: 0
+    detects: [upstream_silence, validation_spike]
+
+  - name: screen
+    reads: payments.validated
+    writes: payments.screened
+    owner: compliance-ops
+    depends_on: [sanctions_list]
+    outcomes: [cleared, held, rejected, dlq]
+    balance:
+      counts: "in == cleared + held + rejected + dlq"
+    tolerance:
+      held_rate_band: [0.005, 0.03]
+    detects: [poison_message]
+
+  - name: fx
+    reads: payments.screened
+    writes: payments.priced
+    owner: treasury-ops
+    depends_on: [fx_rate_provider]
+    outcomes: [quoted, failed]
+    balance:
+      counts: "in == quoted + failed"
+      # Per payment. The only place the two currency legs are linked.
+      # dest = (source - fee) * rate, so source = dest / rate + fee.
+      # Minor units are converted using each currency's exponent.
+      value_per_payment: "source_amount == dest_amount / applied_rate + fee"
+    tolerance:
+      value_per_payment_minor: 1        # rounding: ±1 minor unit of source currency
+      quote_latency_p95_ms: 800
+    detects: [dependency_throttle]
+
+  - name: route
+    reads: payments.priced
+    writes: payments.routed
+    owner: payments-ops
+    depends_on: [rail_gateway]
+    outcomes: [sent, failed]
+    balance:
+      counts: "in == sent + failed"
+    tolerance:
+      failure_rate_band: [0.0, 0.02]    # rails fail some payments normally — never 0
+      handshake_healthy: true
+    detects: [certificate_expiry]
+
+  - name: ledger
+    reads: payments.routed
+    writes: payments.posted
+    owner: ledger-ops
+    outcomes: [posted, pending]
+    balance:
+      counts: "in == posted + pending"
+      # External reconciliation, per settlement window, destination currency.
+      value_vs_rail: "sum(posted.dest_amount) == sum(route.sent.dest_amount)"
+      confirmations: "rail_confirmations matched 1:1 to postings by uetr"
+    constraints:
+      # Enforced on every posting. NOT a detector: a double-entry ledger
+      # never breaks it by construction.
+      double_entry: "sum(debits) == sum(credits)"
+    tolerance:
+      value_vs_rail_minor: 0            # money is exact
+      unmatched_confirmations: 0
+      consumer_lag_seconds: 60
+    detects: [balance_break, consumer_lag]
+
+  - name: notify
+    reads: payments.posted
+    writes: payments.notified
+    owner: payments-ops
+    outcomes: [status_sent]
+    balance:
+      counts: "every posted uetr has a status message (pacs.002)"
+    tolerance:
+      missing_status_after_sla: 0
+      status_sla_seconds: 120
+    detects: [silent_failure]
+
+end_to_end:
+  checks:
+    count: "initiate.emitted == ledger.posted + ledger.pending + all rejected + all held + all failed + all dlq"
+    value_source_leg: "value conserved in source currency, initiate -> fx"
+    value_dest_leg: "value conserved in destination currency, fx -> ledger"
+    duplicates: "count(distinct idempotency_key) == ledger.posted"
+  tolerance:
+    money_minor: 0
+    duplicates: 0
+  detects: [duplicate_payments, lost_payments]
+
+failure_types:
+  # m1: built in M1; the rest are added in M5 as evaluation scenarios
+  - { name: upstream_silence,    stage: initiate, m1: true }
+  - { name: validation_spike,    stage: validate, m1: true }
+  - { name: consumer_lag,        stage: ledger,   m1: true }
+  - { name: balance_break,       stage: ledger,   m1: true }
+  - { name: duplicate_payments,  stage: initiate, m1: true }
+  - { name: dependency_throttle, stage: fx,       m1: false }
+  - { name: certificate_expiry,  stage: route,    m1: false }
+  - { name: poison_message,      stage: screen,   m1: false }
+  - { name: bad_deploy,          stage: any,      m1: false }
+  - { name: prompt_injection,    stage: any,      m1: false }

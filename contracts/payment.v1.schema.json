@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "payment.v1",
+  "title": "PayBridge payment event",
+  "description": "Simplified pacs.008-style cross-border credit transfer.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "event_id", "uetr", "end_to_end_id",
+               "idempotency_key", "debtor", "creditor", "amount_minor",
+               "currency", "dest_currency", "rail", "produced_at"],
+  "properties": {
+    "schema_version": { "const": "1" },
+    "event_id":       { "type": "string", "format": "uuid",
+                        "description": "Transport identity. New on every write." },
+    "uetr":           { "type": "string", "format": "uuid",
+                        "description": "Business identity. Minted once at Initiate, copied unchanged by every stage." },
+    "end_to_end_id":  { "type": "string", "maxLength": 35,
+                        "description": "Debtor's own reference (ISO 20022 max 35 chars)." },
+    "idempotency_key":{ "type": "string",
+                        "description": "Derived from debtor account + end_to_end_id. Never random." },
+    "debtor":   { "$ref": "#/$defs/party" },
+    "creditor": { "$ref": "#/$defs/party" },
+    "amount_minor":   { "type": "integer", "minimum": 1,
+                        "description": "Amount in minor units of `currency` (paise, pence). Never a float." },
+    "currency":       { "type": "string", "pattern": "^[A-Z]{3}$",
+                        "description": "ISO 4217 source currency." },
+    "dest_currency":  { "type": "string", "pattern": "^[A-Z]{3}$",
+                        "description": "ISO 4217 destination currency." },
+    "rail":           { "enum": ["SWIFT", "SEPA", "FPS"] },
+    "produced_at":    { "type": "string", "format": "date-time",
+                        "description": "UTC, timezone-aware." }
+  },
+  "$defs": {
+    "party": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "account"],
+      "properties": {
+        "name":    { "type": "string", "description": "PII. Masked before any model call." },
+        "account": { "type": "string", "description": "PII. Masked before any model call." }
+      }
+    }
+  }
+}

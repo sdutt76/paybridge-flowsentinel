@@ -1,0 +1,14 @@
+{
+  "schema_version": "1",
+  "event_id": "5b8d6dec-ceed-4e27-ba57-61f824ff000d",
+  "uetr": "af2b0e66-3987-4e3d-a1ab-282079de3515",
+  "end_to_end_id": "E2E-20260928-000123",
+  "idempotency_key": "9f2c4e1ab07d3c55e8a1",
+  "debtor":   { "name": "A. Sharma", "account": "IN12XXXX0001" },
+  "creditor": { "name": "J. Miller", "account": "GB29XXXX0042" },
+  "amount_minor": 125000,
+  "currency": "INR",
+  "dest_currency": "GBP",
+  "rail": "SWIFT",
+  "produced_at": "2026-09-28T09:14:07+00:00"
+}
