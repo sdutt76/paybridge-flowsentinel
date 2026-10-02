@@ -28,6 +28,7 @@ import secrets
 import sqlite3
 import sys
 from datetime import datetime, timezone
+from contextlib import closing
 from pathlib import Path
 
 LOGGER = logging.getLogger(__name__)
@@ -187,7 +188,7 @@ def create_database(run_id: str, *, seed: int | None = None) -> Path:
 
     try:
         db_path.parent.mkdir(parents=True, exist_ok=True)
-        with sqlite3.connect(db_path) as conn:
+        with closing(sqlite3.connect(db_path)) as conn, conn:
             existing = conn.execute("PRAGMA user_version").fetchone()[0]
             if existing not in (0, SCHEMA_VERSION):
                 raise SchemaError(
