@@ -77,7 +77,7 @@ Context: payment reconciliation needs values, not just counts.
 Decision: one `stage_telemetry` row per stage per time window, holding:
 - `stage`, `window_start`, `window_end` (UTC)
 - `records_in` and one count per outcome named in `pipeline.yaml` (e.g. passed / rejected / dlq)
-- `value_in_minor`, `value_out_minor` and `currency` — the currency is the source currency up to FX and the destination currency after FX
+- `value_in_minor`, `value_out_minor` and `currency_in` — the currency_out FX takes in one currency and puts out another
 - `p95_latency_ms` where a stage has a latency SLA (FX)
 
 Consequences: `schema.py` needs value columns (Day 2). Values are never summed across currencies (D10).

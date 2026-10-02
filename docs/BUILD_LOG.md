@@ -16,3 +16,8 @@ One entry per session, appended at the bottom. Format: what was done · decision
 Decisions: one database per run plus a soak run in M5; `end_to_end_id` includes the run id.
 Open: `additionalProperties: false` vs forward compatibility; ADR 0003 draft.
 Next: `schema.py` for payments, per-run database, generator → Initiate stage.
+
+
+**02 Oct 2026** — requirements.txt (pyyaml 6.0.3); schema v2: one database per run, uetr identity, STRICT tables, telemetry per D4, dead letter with reasons, run_meta, user_version check, contextlib.closing.
+   Decisions: D4 refined (currency_in / currency_out).
+   Next: generator → initiate.py.
