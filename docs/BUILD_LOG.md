@@ -21,3 +21,7 @@ Next: `schema.py` for payments, per-run database, generator → Initiate stage.
 **02 Oct 2026** — requirements.txt (pyyaml 6.0.3); schema v2: one database per run, uetr identity, STRICT tables, telemetry per D4, dead letter with reasons, run_meta, user_version check, contextlib.closing.
    Decisions: D4 refined (currency_in / currency_out).
    Next: generator → initiate.py.
+
+**03 Oct 2026** — Initiate stage (`initiate.py`): 1,975 payments per contract v1 (seed 42), integer money from integers only, derived idempotency keys, `E2E-<run_id>-<seq>`; 288 telemetry windows including explicit zeros; ground truth records requested vs actual counts; reusing a run id is refused (D7 in code). `inspect_run.py` read-only checks tool. First reconciliation passed: telemetry value = payload value (7,853,359,055 minor units).
+Fixed: virtual environment not active in terminal (check `sys.executable`).
+Next: Validate stage — consumer pattern, offsets, rejections with reasons, DLQ, telemetry; expect in 1,975 = passed 1,934 + rejected 41.
